@@ -91,6 +91,21 @@ Tested on the [Spider benchmark](https://yale-lily.github.io/spider) — the mos
 
 **19/20 (95%) zero-shot, no examples.** The single failure was an ambiguous question — *"What is maximum and minimum death toll caused each time?"* — where the agent returned per-battle results instead of a global aggregate. After adding a one-line scenario clarifying that "each time" means overall, the agent used `lookup_example` to retrieve the guidance and got it right: **20/20.**
 
+## Changes on this fork
+
+This fork adds AST-based read-only SQL validation using SQLGlot in `text2sql/tools.py`.
+
+Before a query reaches the database, the validator:
+
+- Parses the SQL and rejects empty, malformed, or multiple statements.
+- Allows a restricted set of query types.
+- Rejects write operations such as `INSERT`, `UPDATE`, and `DELETE` anywhere in the parsed SQL structure.
+- Checks the SQL inside `EXPLAIN` separately and rejects unsupported commands.
+
+Using SQL structure avoids rejecting a query just because a string value contains a word such as `DELETE`.
+
+Local verification: `python -m pytest -q -p no:cacheprovider` — 59 passed, 1 skipped.
+
 ## Install
 
 ```bash
