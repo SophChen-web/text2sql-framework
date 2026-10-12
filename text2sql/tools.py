@@ -12,6 +12,7 @@ at module load — the LangChain import is lazy and only happens if you call
 from __future__ import annotations
 
 import re
+import sqlglot
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,19 +26,61 @@ _DESTRUCTIVE_PATTERN = re.compile(
 
 
 def _is_read_only(sql: str) -> bool:
-    """Check that SQL is read-only (SELECT/WITH/EXPLAIN/SHOW/PRAGMA only)."""
-    # Strip comments before checking
-    stripped = re.sub(r'--[^\n]*', '', sql)  # single-line comments
-    stripped = re.sub(r'/\*.*?\*/', '', stripped, flags=re.DOTALL)  # block comments
-    stripped = stripped.strip().rstrip(";").strip()
-    if not stripped:
+    """Check that SQL contains exactly one read-only statement."""
+    try:
+        statements = sqlglot.parse(sql)
+    except sqlglot.errors.ParseError:
         return False
-    first_word = stripped.split()[0].upper()
-    if first_word not in ("SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "PRAGMA"):
+
+    # 空语句、多条语句都拒绝
+    if len(statements) != 1 or statements[0] is None:
         return False
-    if _DESTRUCTIVE_PATTERN.search(stripped):
+
+    expression = statements[0]
+        # SHOW 被解析为通用命令，但它是只读元数据查询
+    if expression.key == "command":
+        command_name = str(expression.this).upper()
+        if command_name == "SHOW":
+            return True
+
+        # EXPLAIN 内部的 SQL 也必须通过只读检查
+        if command_name == "EXPLAIN":
+            inner = expression.args.get("expression")
+            inner_sql = getattr(inner, "this", "")
+            return isinstance(inner_sql, str) and _is_read_only(inner_sql)
+
         return False
-    return True
+
+    # 只允许这些查询类型
+    allowed = {
+        "select",
+        "union",
+        "intersect",
+        "except",
+        "show",
+        "describe",
+        "pragma",
+        "explain",
+    }
+    if expression.key not in allowed:
+        return False
+
+    # 即使写操作藏在查询内部，也拒绝
+    blocked = {
+        "insert",
+        "update",
+        "delete",
+        "create",
+        "drop",
+        "alter",
+        "truncate",
+        "merge",
+        "replace",
+        "grant",
+        "revoke",
+        "command",
+    }
+    return not any(node.key in blocked for node in expression.walk())
 
 
 def _format_results(rows: list[dict]) -> str:
