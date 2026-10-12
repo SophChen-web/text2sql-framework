@@ -686,3 +686,28 @@ class TestDatabaseTracing:
         assert "Database tracing disabled" not in caplog.text
         # The in-memory sink is unaffected.
         assert len(tracer.traces) == 2
+
+
+class TestAgentFailureTracing:
+    def test_agent_exception_is_recorded_in_trace(self):
+        from text2sql.generate import SQLGenerator
+        from text2sql.tracing import Tracer
+
+        class BrokenAgent:
+            def invoke(self, _input):
+                raise RuntimeError("provider unavailable")
+
+        generator = SQLGenerator.__new__(SQLGenerator)
+        generator.tracer = Tracer()
+        generator.agent = BrokenAgent()
+
+        with pytest.raises(RuntimeError, match="provider unavailable"):
+            generator.ask("test question")
+
+        trace = generator.tracer.traces[-1]
+        assert trace.question == "test question"
+        assert trace.success is False
+        assert trace.error == (
+            "Agent execution failed (RuntimeError): provider unavailable"
+        )
+        assert generator.tracer._current is None
