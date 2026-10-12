@@ -369,6 +369,35 @@ class TestBackendSelection:
         assert isinstance(agent.backend, agent_mod._AnthropicBackend)
         assert agent.backend.model_name == "just-a-model"
 
+class TestIterationLimit:
+    def test_reaching_iteration_limit_adds_explanation(self, monkeypatch):
+        class RepeatingBackend:
+            def __init__(self):
+                self.calls = 0
+
+            def generate(self, _system_prompt, _tool_schemas, _messages):
+                self.calls += 1
+                return "", [
+                    {
+                        "id": f"call_{self.calls}",
+                        "name": "echo",
+                        "args": {},
+                    }
+                ], {}
+
+        def echo():
+            return "ok"
+
+        backend = RepeatingBackend()
+        monkeypatch.setattr(agent_mod, "_get_backend", lambda _model: backend)
+        monkeypatch.setattr(agent_mod, "MAX_ITERATIONS", 2)
+
+        agent = create_deep_agent("openai:test-model", [echo], "SYS")
+        result = agent.invoke({"messages": [{"role": "user", "content": "go"}]})
+
+        assert backend.calls == 2
+        assert "maximum of 2 agent iterations" in result["messages"][-1].content
+        assert result["messages"][-1].tool_calls == []
 
 # ---------------------------------------------------------------------------
 # Context guard

@@ -468,7 +468,15 @@ class NativeAgent:
                         tool_call_id=tc["id"],
                     )
                 )
-
+        else:
+            messages.append(
+                AIMessage(
+                    content=(
+                        f"Reached the maximum of {MAX_ITERATIONS} agent iterations "
+                        "before producing a final answer."
+                    )
+                )
+            )
         return {"messages": messages}
 
 
