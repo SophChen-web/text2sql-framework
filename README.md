@@ -93,18 +93,28 @@ Tested on the [Spider benchmark](https://yale-lily.github.io/spider) — the mos
 
 ## Changes on this fork
 
-This fork adds AST-based read-only SQL validation using SQLGlot in `text2sql/tools.py`.
+This fork adds the following improvements to the text-to-SQL agent:
 
-Before a query reaches the database, the validator:
+### AST-based read-only SQL validation
 
-- Parses the SQL and rejects empty, malformed, or multiple statements.
-- Allows a restricted set of query types.
-- Rejects write operations such as `INSERT`, `UPDATE`, and `DELETE` anywhere in the parsed SQL structure.
-- Checks the SQL inside `EXPLAIN` separately and rejects unsupported commands.
+Before SQL reaches the database, the validator in `text2sql/tools.py`:
 
-Using SQL structure avoids rejecting a query just because a string value contains a word such as `DELETE`.
+- Parses SQL and rejects empty, malformed, or multiple statements.
+- Allows a restricted set of query types and rejects write operations such as `INSERT`, `UPDATE`, and `DELETE`.
+- Validates the SQL inside `EXPLAIN` separately.
+- Uses SQL structure, so a string value containing a word such as `DELETE` is not rejected by mistake.
 
-Local verification: `python -m pytest -q -p no:cacheprovider` — 59 passed, 1 skipped.
+### Failure tracing
+
+If agent execution or response processing raises an exception, `SQLGenerator.ask()` records a failed query trace and then re-raises the exception.
+
+### Agent iteration limit
+
+When the native agent reaches its maximum iteration count without a final answer, it adds a clear message explaining that the limit was reached.
+
+### Verification
+
+Full test suite: `python -m pytest -q -p no:cacheprovider` — **63 passed, 1 skipped**.
 
 ## Install
 
