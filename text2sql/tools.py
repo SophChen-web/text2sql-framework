@@ -30,20 +30,31 @@ def _is_read_only(sql: str) -> bool:
     try:
         statements = sqlglot.parse(sql)
     except sqlglot.errors.ParseError:
-        return False
+        # Fall back to the conservative lexical guard for unsupported SQL syntax.
+        stripped = re.sub(r"--[^\n]*", "", sql)
+        stripped = re.sub(r"/\*.*?\*/", "", stripped, flags=re.DOTALL)
+        stripped = stripped.strip().rstrip(";").strip()
+        if not stripped or ";" in stripped:
+            return False
 
-    # 空语句、多条语句都拒绝
+        first_word = stripped.split()[0].upper()
+        allowed_starts = ("SELECT", "WITH", "EXPLAIN", "DESCRIBE", "SHOW", "PRAGMA")
+        if first_word not in allowed_starts:
+            return False
+        return not _DESTRUCTIVE_PATTERN.search(stripped)
+
+    # Reject empty input and multiple statements.
     if len(statements) != 1 or statements[0] is None:
         return False
 
     expression = statements[0]
-        # SHOW 被解析为通用命令，但它是只读元数据查询
+    # SQLGlot represents SHOW as a generic command, but it is read-only metadata.
     if expression.key == "command":
         command_name = str(expression.this).upper()
         if command_name == "SHOW":
             return True
 
-        # EXPLAIN 内部的 SQL 也必须通过只读检查
+        # Validate the SQL inside EXPLAIN separately.
         if command_name == "EXPLAIN":
             inner = expression.args.get("expression")
             inner_sql = getattr(inner, "this", "")
@@ -51,7 +62,7 @@ def _is_read_only(sql: str) -> bool:
 
         return False
 
-    # 只允许这些查询类型
+    # Allow only supported query types.
     allowed = {
         "select",
         "union",
@@ -65,7 +76,7 @@ def _is_read_only(sql: str) -> bool:
     if expression.key not in allowed:
         return False
 
-    # 即使写操作藏在查询内部，也拒绝
+    # Reject write operations even when nested inside a query.
     blocked = {
         "insert",
         "update",
