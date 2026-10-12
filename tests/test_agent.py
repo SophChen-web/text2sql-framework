@@ -708,6 +708,27 @@ class TestAgentFailureTracing:
         assert trace.question == "test question"
         assert trace.success is False
         assert trace.error == (
-            "Agent execution failed (RuntimeError): provider unavailable"
+            "Query processing failed (RuntimeError): provider unavailable"
         )
+        assert generator.tracer._current is None
+
+    def test_parse_exception_is_recorded_in_trace(self):
+        from text2sql.generate import SQLGenerator
+        from text2sql.tracing import Tracer
+
+        class MalformedAgent:
+            def invoke(self, _input):
+                return {}
+
+        generator = SQLGenerator.__new__(SQLGenerator)
+        generator.tracer = Tracer()
+        generator.agent = MalformedAgent()
+
+        with pytest.raises(KeyError, match="messages"):
+            generator.ask("test question")
+
+        trace = generator.tracer.traces[-1]
+        assert trace.question == "test question"
+        assert trace.success is False
+        assert trace.error == "Query processing failed (KeyError): 'messages'"
         assert generator.tracer._current is None

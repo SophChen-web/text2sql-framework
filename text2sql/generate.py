@@ -157,16 +157,21 @@ class SQLGenerator:
             result = self.agent.invoke(
                 {"messages": [{"role": "user", "content": question}]}
             )
+            return self._parse_result(
+                question, result["messages"], max_rows=max_rows
+            )
         except Exception as exc:
             if self.tracer:
                 self.tracer.end_query(
                     sql="",
                     success=False,
-                    error=f"Agent execution failed ({type(exc).__name__}): {str(exc)[:300]}",
+                    error=(
+                        f"Query processing failed "
+                        f"({type(exc).__name__}): {str(exc)[:300]}"
+                    ),
                 )
             raise
 
-        return self._parse_result(question, result["messages"], max_rows=max_rows)
 
     def _parse_result(self, question: str, messages: list, max_rows: int | None = None) -> SQLResult:
         """Extract SQL from the agent's final text response, then execute it.
