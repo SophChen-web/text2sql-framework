@@ -33,6 +33,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+api = ["fastapi[standard]>=0.115"]
 openai = ["openai>=1.50"]
 anthropic = ["anthropic>=0.40"]
 dashboard = ["httpx>=0.27"]
